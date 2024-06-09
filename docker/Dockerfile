@@ -1,0 +1,58 @@
+FROM php:8.2-fpm-bullseye AS base
+
+WORKDIR /app
+
+ARG NODE_VERSION=18
+ARG UID=1000
+ARG GID=1000
+
+RUN usermod -u $UID -o www-data
+RUN groupmod -g $GID -o www-data
+
+ENV COMPOSER_ALLOW_SUPERUSER=1 \
+  COMPOSER_HOME=/composer
+
+COPY --from=composer:2.2 /usr/bin/composer /usr/bin/composer
+
+RUN apt-get update \
+  && apt-get -y install --no-install-recommends \
+    locales \
+    git \
+    unzip \
+    libzip-dev \
+    libicu-dev \
+    libonig-dev \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    zlib1g-dev \
+  && locale-gen en_US.UTF-8 \
+  && localedef -f UTF-8 -i en_US en_US.UTF-8 \
+  && docker-php-ext-configure gd --with-freetype --with-jpeg \
+  && docker-php-ext-install \
+    intl \
+    pdo_mysql \
+    zip \
+    bcmath \
+    gd \
+  && composer config -g process-timeout 3600 \
+  && composer config -g repos.packagist composer https://packagist.org \
+  && chown -R www-data /composer \
+  && curl -sL https://deb.nodesource.com/setup_$NODE_VERSION.x | bash - \
+  && apt-get install -y nodejs \
+  && npm install -g yarn \
+  && chown www-data /var/www \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV TZ=UTC \
+  LANG=en_US.UTF-8 \
+  LANGUAGE=en_US:en \
+  LC_ALL=en_US.UTF-8
+
+COPY . /app/
+
+RUN composer install
+RUN chmod -R 777 storage bootstrap/cache
+
+EXPOSE 9000
